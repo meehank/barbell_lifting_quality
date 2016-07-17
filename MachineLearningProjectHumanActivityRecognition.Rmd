@@ -1,0 +1,101 @@
+---
+title: "barbell lifting quality classification"
+author: "km"
+date: "july 17, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# coursera machine learning project--predicting *quality* of human exercising
+
+This report serves as the project requirement for the Coursera Machine Learning course.
+
+The objective is to employ some of the machine learning methods taught in class to predict *how well* six subjects performed barbell lift exercises based upon a dataset of readings from each of four sensors worn on their belt, forearm, arm, and barbell.  
+
+The experiments are described here: http://groupware.les.inf.puc-rio.br/har  
+
+The training and test data are downloaded from the following URLs:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+We clean both training and testing datasets by eliminating columns that are either not readings from sensors or incomplete (with missing values).    
+
+We split the original training data into 70% training and 30% testing.  
+
+We train a random forest model on the training data. Reducing the ntrees parameter (from the default of 500 to 100) improves execution time with no significant loss of model accuracy.   
+
+With accuracy over 99%, we are satisfied with the model and so apply it to the original testing dataset of 20 records, expecting to get at least 19 of the classes correct.  
+
+## load and examine data
+```{r load data}
+#Mark as NA any "NA", blank, or "#DIV/0!". (Observed "#DIV/0" in the data.)
+alldata <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+nrow(alldata)
+test20 <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+nrow(test20)
+#str(alldata)
+#View(alldata)
+#See how users performed exercises over time.
+table(alldata$cvtd_timestamp, alldata$user_name)
+#See how users did all classes of exercise quality.
+table(alldata$classe, alldata$user_name)
+```
+
+## clean data
+```{r clean}
+ncol(alldata)
+#First few columns are for bookkeeping and do not hold collected data that could help predict classe.
+alldata <- alldata[, -c(1:7)]
+test20 <- test20[, -c(1:7)]  #ditto for test20
+#Choose columns with no missing values.
+alldata <- alldata[colSums(is.na(alldata))==0]
+test20 <- test20[colSums(is.na(test20))==0] #ditto for test20
+ncol(alldata)
+```
+
+## split data into training and testing sets
+```{r split data}
+set.seed(1234)
+library(caret)
+inTrain <- createDataPartition(alldata$classe, p=0.70)[[1]]
+training <- alldata[ inTrain,]
+testing <- alldata[-inTrain,]
+nrow(training)
+nrow(testing)
+```
+
+## fit a random forest model to training set
+```{r fit an RF model}
+#Default ntree=500 is slow. 100 works well too.
+rfmodel <- train(classe ~ ., data=training, method="rf", ntree=100)
+```
+
+## apply rfmodel to testing set and examine confusion matrix
+```{r apply model to testing set}
+rfpred <- predict(rfmodel, newdata=testing)
+cm <- confusionMatrix(rfpred, testing$classe)
+print(cm$overall['Accuracy'])
+print(cm)
+```
+
+## apply rfmodel to test20
+```{r apply to test20}
+predict(rfmodel, newdata=test20)
+```
+
+## summary
+
+We first clean the data by eliminating many of the 159 potential factors of the original dataset, leaving only those 52 that held sensor readings for all records.  
+
+We choose a random forest model because of its accuracy and power. Experimenting with the ntrees parameter, we find that 100 yields as much accuracy as 500 and significanty reduces execution time.    
+
+We dispense with explicit cross validation because, according to its inventor, the random forest algorithm does not need it.  
+*"In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error."* https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm  
+
+Our expected out-of-sample error rate is (1 - the accuracy on the test set), under 1%.  
+
+Since our prediction vector for the 20 test cases was invariant over changes of seed and tuning parameter, we are confident that it is at least 95% correct.  
+
